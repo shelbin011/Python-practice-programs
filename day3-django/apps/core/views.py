@@ -1,63 +1,139 @@
-from django.http import JsonResponse
-
-# Create your views here.
-
-
-def home(request):
-    return JsonResponse({
-        "message": "Hello the api is working"
-    })
-
+from .responses import success_response
 
 from rest_framework.views import APIView
-from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
+
+from rest_framework_simplejwt.views import (
+    TokenBlacklistView,
+    TokenRefreshView,
+    TokenObtainPairView,
+)
 
 from .models import User, Job
-from .serializers import UserSerializer, JobSerializer
+from .serializers import (
+    EmailTokenObtainPairSerializer,
+    JobSerializer,
+    PublicUserSerializer,
+    SignupSerializer,
+    UserSerializer,
+)
+
+from apps.recruitment.permissions import IsEmployer
 
 
-# 1. Job List API
+# Home API
+def home(request):
+    return success_response(
+        data={"message": "Hello the api is working"},
+    )
+
+
+# Signup API
+class SignupAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = SignupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.save()
+
+        return success_response(
+            data=PublicUserSerializer(user).data,
+            message="User registered successfully.",
+            status_code=status.HTTP_201_CREATED
+        )
+
+
+# Login API
+class EmailTokenObtainPairView(TokenObtainPairView):
+    permission_classes = [AllowAny]
+    serializer_class = EmailTokenObtainPairSerializer
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.exception:
+            return response
+        return success_response(
+            data=response.data,
+            message="Login successful.",
+            status_code=response.status_code,
+        )
+
+
+# Refresh Token API
+class RefreshTokenView(TokenRefreshView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.exception:
+            return response
+        return success_response(
+            data=response.data,
+            message="Token refreshed successfully.",
+            status_code=response.status_code,
+        )
+
+
+# Logout API
+class LogoutView(TokenBlacklistView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.exception:
+            return response
+        return success_response(
+            data={},
+            message="Logout successful.",
+            status_code=response.status_code,
+        )
+
+
+# Job List API
 class JobListAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         jobs = Job.objects.all()
         serializer = JobSerializer(jobs, many=True)
 
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
+        return success_response(
+            data=serializer.data,
+            status_code=status.HTTP_200_OK,
         )
 
 
-# 2. Job Create API
+# Job Create API
 class JobCreateAPIView(APIView):
+    permission_classes = [IsEmployer]
 
     def post(self, request):
         serializer = JobSerializer(data=request.data)
 
-        if serializer.is_valid():
-            serializer.save()
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
 
-            return Response(
-                serializer.data,
-                status=status.HTTP_201_CREATED
-            )
-
-        return Response(
-            serializer.errors,
-            status=status.HTTP_400_BAD_REQUEST
+        return success_response(
+            data=serializer.data,
+            status_code=status.HTTP_201_CREATED,
         )
 
 
-# 3. User Test API
+# User Test API
 class UserTestAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         users = User.objects.all()
         serializer = UserSerializer(users, many=True)
 
-        return Response({
-            "message": "User API working successfully",
-            "users": serializer.data
-        }, status=status.HTTP_200_OK)
+        return success_response(
+            data={
+                "message": "User API working successfully",
+                "users": serializer.data
+            },
+            status_code=status.HTTP_200_OK,
+        )
